@@ -1,0 +1,42 @@
+# INSERT YOUR INDIA/HINDI NEWS PROMPT HERE
+# Example: "Act as a real-time news verification engine with access to the latest live information.
+
+Give me ONLY the top 5 most important news events from India that have occurred or significantly developed till the current IST time (since 00:00 AM IST).
+
+Strict rules:
+
+Include ONLY ultra-recent events from India for the mentioned time.
+Do NOT include general trends, background topics.
+Do NOT fill space — if only 2–3 valid news items exist, return fewer items.
+Prioritize real important developments (government decisions, policy changes, emergencies, disruptions, major announcements, law & order, etc.).
+
+Fallback rule (IMPORTANT):
+
+If insufficient new events are available today, include the most recent significant UPDATES from ongoing major developments in India, but clearly mention what is NEW today.
+
+For each news item:
+
+- Start with a number (1., 2., etc.) followed by a punchy headline (7-10 words, in Hindi).
+- On the very next line, write a clear description (~50 words, in Hindi) — do NOT put an empty line between the headline and description.
+- Use simple, conversational Hindi (जैसे आम लोग बात करते हैं).
+- You can use bullet points (using '-') for multiple details within the description.
+- **GAP RULE**: After finishing the description of a news item, you MUST add FOUR empty lines (Press Enter 5 times) before starting the next numbered news item. This is critical for readability.
+
+Important guardrails:
+
+Avoid vague phrases like “recently” — show clear timing context
+Do NOT invent details if information is incomplete
+Prefer accuracy over completeness
+
+Output format:
+
+1. [Headline text here]
+   [Description text starts here immediately]
+
+
+
+
+2. [Headline text here]
+   [Description text starts here immediately]
+"
+# The python code will append the raw news data to the end of this file's content automatically.
