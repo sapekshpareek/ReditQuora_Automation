@@ -4,8 +4,8 @@ A highly efficient, modular Python application that fetches live news, formats i
 
 ## Features
 
-- **Automated Scheduling:** Runs twice a day automatically using `APScheduler` (e.g., Morning for World News, Evening for India News).
-- **Manual Triggering:** Provides a FastAPI webhook endpoint (`/trigger-news-post`) for on-demand execution.
+- **Automated Scheduling:** Designed to run reliably using Google Cloud Scheduler.
+- **Manual Triggering:** Provides a FastAPI webhook endpoint (`/trigger-news-post`) for on-demand or scheduled execution.
 - **LLM Powered:** Uses Google's Gemini 2.5 Flash (or OpenAI) to rewrite and summarize raw news data based on customizable prompts.
 - **Reddit Integration:** Securely posts to Reddit using the official `PRAW` wrapper.
 - **Quora Integration:** Posts to Quora using browser automation via `Playwright` and `playwright-stealth` with persistent session profiles to avoid bot detection.
@@ -19,14 +19,16 @@ project_root/
 ├── config.py               # Environment variables loading and constants
 ├── prompts/                # Text files containing your LLM prompts
 │   ├── world_news.txt         
+│   ├── national_news.txt         
 │   └── india_hindi_news.txt   
 ├── services/
 │   ├── news_fetcher.py     # Fetches raw news (NewsAPI / Web Scraping)
 │   ├── llm_processor.py    # Sends raw news + prompt to Gemini
 │   ├── reddit_publisher.py # Posts to Reddit via PRAW
 │   └── quora_publisher.py  # Posts to Quora via Playwright
+├── Dockerfile              # Docker configuration for Cloud Run
 ├── requirements.txt        # Python dependencies
-└── .gitignore              # Ignored files (venv, .env, quora_profile)
+└── .dockerignore           # Ignored files (venv, .env, etc.)
 ```
 
 ## Setup Instructions
@@ -86,43 +88,65 @@ Open `prompts/world_news.txt` and `prompts/india_hindi_news.txt` and insert the 
 ### 6. Quora Authentication Setup (CRITICAL)
 Quora actively blocks headless bots. To post successfully, you must generate a persistent login session using a standard browser window first.
 
-1. Open `services/quora_publisher.py`.
-2. Temporarily change `headless=True` to `headless=False` inside the `launch_persistent_context` block.
-3. Write a temporary script to run the Playwright block, or just run the FastAPI server and trigger the Quora script.
-4. When the browser opens Quora, **manually log in**, solve any captchas, and verify you are on the authenticated homepage.
-5. Close the browser. Playwright will have saved your session cookies inside the `./quora_profile` directory.
-6. **Change `headless=False` back to `headless=True`** in your code for future automated runs.
+1. Run the local helper script: `python quora_login.py`
+2. When the browser opens Quora, **manually log in**, solve any captchas, and verify you are on the authenticated homepage.
+3. Close the browser. Playwright will have saved your session cookies inside the `./quora_profile` directory.
+4. **Important**: This profile will be bundled into your Docker container when you deploy. If cookies expire later, you will need to run this script again and redeploy.
 
-## Running the Application
+## Deployment (Google Cloud Run)
 
-Start the FastAPI application and the background scheduler:
+The application is containerized and designed specifically for Google Cloud Run to keep costs at zero when idle. 
 
+### 1. Build and Test Locally
 ```bash
-python main.py
-# OR
-uvicorn main:app --host 0.0.0.0 --port 8000
+docker build -t news-autoposter .
+docker run -p 8080:8080 --env-file .env news-autoposter
 ```
 
-- The background scheduler will automatically trigger the World News pipeline at **08:00 AM** and the India News pipeline at **08:00 PM** (local server time).
+### 2. Deploy to Cloud Run
+Using the Google Cloud CLI (`gcloud`), deploy your service:
+```bash
+gcloud run deploy news-autoposter --source . --region us-central1 --allow-unauthenticated --timeout 5m
+```
+*Note: Make sure to set a Request Timeout of at least 5 minutes so Playwright has enough time to scrape.*
 
-### Manual Triggering API
-You can trigger the pipeline manually by sending a POST request:
+### 3. Set Environment Variables
+In the Google Cloud Console, navigate to your Cloud Run service's **Edit & Deploy New Revision** > **Variables & Secrets** and add your credentials (`REDDIT_CLIENT_ID`, `GEMINI_API_KEY`, etc.) rather than uploading your `.env` file.
 
-**Endpoint:** `POST /trigger-news-post`
+## Setting Up the Auto-Post Schedule
 
-**JSON Payload:**
-```json
-{
-  "platform": "both", 
-  "news_type": "world" 
-}
+We use **Google Cloud Scheduler** to trigger the API. This prevents duplicate posts when Cloud Run scales up.
+
+1. Go to **Cloud Scheduler** in the Google Cloud Console.
+2. Click **Create Job**.
+3. Target: `HTTP`, Method: `POST`.
+4. URL: `https://<YOUR_CLOUD_RUN_URL>/trigger-news-post`
+
+Here are the recommended schedules and JSON bodies for your jobs:
+
+**Morning International News (9:00 AM)**
+* **Frequency:** `0 9 * * *`
+* **Body:** `{"platform": "both", "news_type": "international"}`
+
+**Afternoon National News (4:00 PM)**
+* **Frequency:** `0 16 * * *`
+* **Body:** `{"platform": "both", "news_type": "national"}`
+
+**Evening Hindi News (8:00 PM)**
+* **Frequency:** `0 20 * * *`
+* **Body:** `{"platform": "both", "news_type": "hindi"}`
+
+**Late Night Recap - International (2:00 AM)**
+* **Frequency:** `0 2 * * *`
+* **Body:** `{"platform": "both", "news_type": "international"}`
+
+### Triggering Manually
+You can still trigger the pipeline locally or in the cloud using `curl`:
+
+```bash
+curl -X POST https://<YOUR_CLOUD_RUN_URL>/trigger-news-post \
+     -H "Content-Type: application/json" \
+     -d '{"platform":"both", "news_type":"national"}'
 ```
 * `platform` options: `"reddit"`, `"quora"`, `"both"`
-* `news_type` options: `"world"`, `"india"`
-
-Example using `curl`:
-```bash
-curl -X POST http://127.0.0.1:8000/trigger-news-post \
-     -H "Content-Type: application/json" \
-     -d '{"platform":"reddit", "news_type":"india"}'
-```
+* `news_type` options: `"international"`, `"national"`, `"hindi"`
