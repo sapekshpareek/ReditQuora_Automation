@@ -81,19 +81,25 @@ def post_to_quora(title: str, content: str) -> bool:
             # illustrative and likely need to be updated by inspecting Quora's actual post button.
             
             # 1. Click the main box that opens the modal
-            logger.info("Looking for the 'What do you want to ask or share?' box...")
+            logger.info("Looking for the 'What do you want to ask or share?' box or 'Add question' button...")
             try:
-                # Try clicking the generic input on the feed that opens the modal
-                open_modal_btn = page.locator("text=What do you want to ask or share?")
-                if open_modal_btn.is_visible():
-                    open_modal_btn.click(timeout=5000)
+                # First try the red "Add question" button in the top right (often more reliable)
+                add_question_btn = page.locator("button:has-text('Add question')").first
+                if add_question_btn.is_visible():
+                    add_question_btn.click(timeout=5000, force=True)
                 else:
-                    # Fallback: Try clicking the generic Add question button top right
-                    page.locator("button:has-text('Add question')").first.click(timeout=5000)
+                    # Fallback: Try clicking the generic input on the feed
+                    open_modal_btn = page.locator("text=What do you want to ask or share?")
+                    open_modal_btn.click(timeout=5000, force=True)
             except Exception as e:
-                logger.error(f"Could not open the modal: {e}")
-                browser_to_close.close()
-                return False
+                logger.warning(f"Initial click failed: {e}. Trying alternate selector...")
+                try:
+                    # Last resort fallback
+                    page.locator("div.q-text.qu-color--gray_light:has-text('What do you want to ask')").first.click(timeout=5000, force=True)
+                except Exception as e2:
+                    logger.error(f"Could not open the modal at all: {e2}")
+                    browser_to_close.close()
+                    return False
 
             # 2. Click the "Create Post" tab inside the modal
             logger.info("Switching to 'Create Post' tab...")
