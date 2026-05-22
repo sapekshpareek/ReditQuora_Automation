@@ -96,7 +96,7 @@ def run_news_pipeline(platform="both", news_type="international"):
 app = FastAPI(title="News Auto-Poster API")
 
 @app.post("/trigger-news-post")
-async def trigger_news_post(payload: TriggerPayload):
+def trigger_news_post(payload: TriggerPayload):
     """
     Manually triggers the news fetching and posting pipeline.
     Runs synchronously to prevent Cloud Run CPU throttling.
