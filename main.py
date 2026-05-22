@@ -92,8 +92,8 @@ async def lifespan(app: FastAPI):
     # Startup: Start the scheduler
     logger.info("Starting APScheduler...")
     # Schedule twice a day: 08:00 AM and 08:00 PM local server time
-    scheduler.add_job(run_news_pipeline, 'cron', hour=8, minute=0, args=["both", "world"], id="morning_world_news")
-    scheduler.add_job(run_news_pipeline, 'cron', hour=20, minute=0, args=["both", "india"], id="evening_india_news")
+    scheduler.add_job(run_news_pipeline, 'cron', hour=8, minute=0, args=["quora", "world"], id="morning_world_news")
+    scheduler.add_job(run_news_pipeline, 'cron', hour=20, minute=0, args=["quora", "india"], id="evening_india_news")
     scheduler.start()
     yield
     # Shutdown: Stop the scheduler
