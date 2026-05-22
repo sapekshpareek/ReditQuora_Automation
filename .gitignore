@@ -33,3 +33,5 @@ Thumbs.db
 
 # Logs
 *.log
+quora_cookies.json
+quora_cookies.txt

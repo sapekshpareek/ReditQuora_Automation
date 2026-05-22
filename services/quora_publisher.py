@@ -14,20 +14,57 @@ def post_to_quora(title: str, content: str) -> bool:
 
     try:
         with sync_playwright() as p:
-            # Using persistent context to retain login session
+            import json
+            import gzip
+            import base64
+            
             # Using a real browser User Agent is CRITICAL for headless mode on Quora
             user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
             
-            logger.info(f"Launching Playwright with user data dir: {config.QUORA_USER_DATA_DIR}")
-            browser = p.chromium.launch_persistent_context(
-                user_data_dir=config.QUORA_USER_DATA_DIR,
-                headless=True, # Run in background (headless) now that it's working
-                user_agent=user_agent,
-                viewport={"width": 1920, "height": 1080},
-                args=["--disable-blink-features=AutomationControlled"]
-            )
+            if config.QUORA_COOKIES_JSON:
+                logger.info("QUORA_COOKIES_JSON found. Launching standard browser and injecting cookies.")
+                playwright_browser = p.chromium.launch(
+                    headless=True,
+                    args=["--disable-blink-features=AutomationControlled"]
+                )
+                context = playwright_browser.new_context(
+                    user_agent=user_agent,
+                    viewport={"width": 1920, "height": 1080}
+                )
+                
+                # Decode and Inject cookies
+                try:
+                    # Decompress the base64 gzip string
+                    compressed = base64.b64decode(config.QUORA_COOKIES_JSON)
+                    json_str = gzip.decompress(compressed).decode('utf-8')
+                    cookies = json.loads(json_str)
+                    context.add_cookies(cookies)
+                except Exception as e:
+                    logger.error(f"Failed to parse or inject cookies: {e}")
+                    playwright_browser.close()
+                    return False
+                
+                page = context.new_page()
+                browser_to_close = playwright_browser
+                
+            else:
+                logger.info(f"Launching Playwright with persistent user data dir: {config.QUORA_USER_DATA_DIR}")
+                context = p.chromium.launch_persistent_context(
+                    user_data_dir=config.QUORA_USER_DATA_DIR,
+                    headless=True,
+                    user_agent=user_agent,
+                    viewport={"width": 1920, "height": 1080},
+                    args=["--disable-blink-features=AutomationControlled"]
+                )
+                
+                # launch_persistent_context creates a default page
+                if len(context.pages) > 0:
+                    page = context.pages[0]
+                else:
+                    page = context.new_page()
+                    
+                browser_to_close = context
             
-            page = browser.new_page()
             # Apply stealth to avoid bot detection
             Stealth().apply_stealth_sync(page)
 
@@ -55,7 +92,7 @@ def post_to_quora(title: str, content: str) -> bool:
                     page.locator("button:has-text('Add question')").first.click(timeout=5000)
             except Exception as e:
                 logger.error(f"Could not open the modal: {e}")
-                browser.close()
+                browser_to_close.close()
                 return False
 
             # 2. Click the "Create Post" tab inside the modal
@@ -129,7 +166,7 @@ def post_to_quora(title: str, content: str) -> bool:
             page.wait_for_timeout(5000)
 
             logger.info("Quora posting automation completed (Note: verify selectors in code).")
-            browser.close()
+            browser_to_close.close()
             return True
 
     except Exception as e:

@@ -24,6 +24,9 @@ class Config:
     # manually, log into Quora, and let it save the state here.
     QUORA_USER_DATA_DIR = os.getenv("QUORA_USER_DATA_DIR", "./quora_profile")
     
+    # Secure alternative: Inject cookies directly via JSON string
+    QUORA_COOKIES_JSON = os.getenv("QUORA_COOKIES_JSON")
+    
     # NewsAPI Setting (if using NewsAPI instead of scraping)
     # Get a key from https://newsapi.org/
     NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")

@@ -42,6 +42,29 @@ async def main():
             pass
             
         print("Browser closed. Session saved successfully!")
+        
+        # Extract cookies to use in Cloud Run environment variables
+        import json
+        import gzip
+        import base64
+        
+        cookies = await browser_context.cookies()
+        # Filter to only keep Quora cookies
+        quora_cookies = [c for c in cookies if 'quora.com' in c.get('domain', '')]
+        
+        # Compress the JSON to drastically reduce size (from ~40KB down to ~4KB)
+        json_str = json.dumps(quora_cookies)
+        compressed = gzip.compress(json_str.encode('utf-8'))
+        b64_encoded = base64.b64encode(compressed).decode('utf-8')
+        
+        with open("quora_cookies.txt", "w") as f:
+            f.write(b64_encoded)
+            
+        print("\n" + "="*50)
+        print("SUCCESS! Your cookies have been compressed and saved to quora_cookies.txt")
+        print("Open that file, copy ALL the text, and paste it into Cloud Run")
+        print("as an Environment Variable named: QUORA_COOKIES_JSON")
+        print("="*50 + "\n")
 
 if __name__ == "__main__":
     # Ensure playwright browsers are installed first
