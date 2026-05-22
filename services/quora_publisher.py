@@ -106,7 +106,7 @@ def post_to_quora(title: str, content: str) -> bool:
             page.wait_for_timeout(1000) # Wait for modal to animate
             try:
                 # Find the tab that says Create Post and click it
-                page.locator("text=Create Post").first.click(timeout=5000)
+                page.locator("text=Create Post").first.click(timeout=5000, force=True)
             except Exception as e:
                 logger.error(f"Could not click 'Create Post' tab: {e}")
                 
@@ -118,7 +118,7 @@ def post_to_quora(title: str, content: str) -> bool:
             try:
                 # Quora's rich text editor usually uses contenteditable divs
                 editor = page.locator("div[contenteditable='true']")
-                editor.click(timeout=5000)
+                editor.click(timeout=5000, force=True)
                 page.wait_for_timeout(500)
                 
                 # Insert text via execCommand which simulates pasting natively. 
