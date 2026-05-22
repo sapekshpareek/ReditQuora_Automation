@@ -1,9 +1,9 @@
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI
 from pydantic import BaseModel
-from apscheduler.schedulers.background import BackgroundScheduler
 import uvicorn
+import os
 from datetime import datetime
 
 # Import services
@@ -19,15 +19,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize Scheduler
-scheduler = BackgroundScheduler()
-
+# Removed APScheduler for Cloud Run. Use Cloud Scheduler instead.
 # Pydantic models for API
 class TriggerPayload(BaseModel):
     platform: str = "both" # "reddit", "quora", or "both"
-    news_type: str = "world" # "world" or "india"
+    news_type: str = "international" # "international", "national", "hindi"
 
-def run_news_pipeline(platform="both", news_type="world"):
+def run_news_pipeline(platform="both", news_type="international"):
     """
     The main pipeline: Fetch -> Process -> Publish
     """
@@ -38,12 +36,18 @@ def run_news_pipeline(platform="both", news_type="world"):
     prompt_file = ""
     title = f"Latest {news_type.capitalize()} News Update - {datetime.now().strftime('%Y-%m-%d')}"
     
-    if news_type == "world":
+    if news_type in ["world", "international"]:
         raw_news = fetch_world_news()
         prompt_file = "world_news.txt"
-    elif news_type == "india":
+        title = f"Latest International News Update - {datetime.now().strftime('%Y-%m-%d')}"
+    elif news_type == "national":
+        raw_news = fetch_india_news()
+        prompt_file = "national_news.txt"
+        title = f"Latest National News Update - {datetime.now().strftime('%Y-%m-%d')}"
+    elif news_type in ["india", "hindi"]:
         raw_news = fetch_india_news()
         prompt_file = "india_hindi_news.txt"
+        title = f"आज की ताज़ा ख़बरें (Latest Hindi News) - {datetime.now().strftime('%Y-%m-%d')}"
     else:
         logger.error(f"Invalid news_type: {news_type}")
         return
@@ -87,34 +91,25 @@ def run_news_pipeline(platform="both", news_type="world"):
     logger.info("Pipeline execution finished.")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup: Start the scheduler
-    logger.info("Starting APScheduler...")
-    # Schedule twice a day: 08:00 AM and 08:00 PM local server time
-    scheduler.add_job(run_news_pipeline, 'cron', hour=8, minute=0, args=["quora", "world"], id="morning_world_news")
-    scheduler.add_job(run_news_pipeline, 'cron', hour=20, minute=0, args=["quora", "india"], id="evening_india_news")
-    scheduler.start()
-    yield
-    # Shutdown: Stop the scheduler
-    logger.info("Shutting down APScheduler...")
-    scheduler.shutdown()
-
 # Initialize FastAPI App
-app = FastAPI(lifespan=lifespan, title="News Auto-Poster API")
+# Removed APScheduler lifespan since Cloud Scheduler will trigger the endpoint
+app = FastAPI(title="News Auto-Poster API")
 
 @app.post("/trigger-news-post")
-async def trigger_news_post(payload: TriggerPayload, background_tasks: BackgroundTasks):
+async def trigger_news_post(payload: TriggerPayload):
     """
     Manually triggers the news fetching and posting pipeline.
+    Runs synchronously to prevent Cloud Run CPU throttling.
     """
     logger.info(f"Manual trigger received: {payload}")
-    background_tasks.add_task(run_news_pipeline, payload.platform, payload.news_type)
-    return {"message": "News pipeline triggered in the background.", "payload": payload}
+    # Run synchronously
+    run_news_pipeline(payload.platform, payload.news_type)
+    return {"message": "News pipeline completed successfully.", "payload": payload}
 
 @app.get("/")
 async def root():
     return {"status": "Service is running."}
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
