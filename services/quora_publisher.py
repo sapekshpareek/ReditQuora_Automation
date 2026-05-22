@@ -25,7 +25,12 @@ def post_to_quora(title: str, content: str) -> bool:
                 logger.info("QUORA_COOKIES_JSON found. Launching standard browser and injecting cookies.")
                 playwright_browser = p.chromium.launch(
                     headless=True,
-                    args=["--disable-blink-features=AutomationControlled"]
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage"
+                    ]
                 )
                 context = playwright_browser.new_context(
                     user_agent=user_agent,
@@ -54,7 +59,12 @@ def post_to_quora(title: str, content: str) -> bool:
                     headless=True,
                     user_agent=user_agent,
                     viewport={"width": 1920, "height": 1080},
-                    args=["--disable-blink-features=AutomationControlled"]
+                    args=[
+                        "--disable-blink-features=AutomationControlled",
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage"
+                    ]
                 )
                 
                 # launch_persistent_context creates a default page

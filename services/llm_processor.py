@@ -55,11 +55,26 @@ def process_news(raw_news: str, prompt_filename: str) -> str:
         elif config.LLM_PROVIDER == 'gemini':
             if not config.GEMINI_API_KEY:
                 raise ValueError("GEMINI_API_KEY is not set.")
-            response = gemini_client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=full_prompt,
-            )
-            return response.text
+                
+            import time
+            max_retries = 5
+            for attempt in range(max_retries):
+                try:
+                    response = gemini_client.models.generate_content(
+                        model='gemini-2.5-flash',
+                        contents=full_prompt,
+                    )
+                    return response.text
+                except Exception as e:
+                    if "503" in str(e) or "UNAVAILABLE" in str(e):
+                        if attempt < max_retries - 1:
+                            logger.warning(f"Gemini API busy (503). Retrying in 10 seconds... (Attempt {attempt + 1}/{max_retries})")
+                            time.sleep(10)
+                        else:
+                            logger.error(f"Gemini API failed after {max_retries} attempts.")
+                            raise
+                    else:
+                        raise
             
         else:
             raise ValueError(f"Unsupported LLM provider: {config.LLM_PROVIDER}")
