@@ -175,11 +175,20 @@ def post_to_quora(title: str, content: str) -> bool:
                 page.screenshot(path="quora_error.png")
                 logger.info("Saved quora_error.png for debugging.")
 
-            # Wait a bit so the post can process before closing
-            page.wait_for_timeout(5000)
-
             # Wait a bit for the submission to process
             page.wait_for_timeout(5000)
+            
+            # --- DEBUGGING: CAPTURE THE SCREEN ---
+            # Since it works locally but not on the server, Quora might be showing a CAPTCHA
+            # or silently blocking the post because of the Google Cloud IP address.
+            try:
+                import base64
+                screenshot = page.screenshot(type="jpeg", quality=30)
+                b64_img = base64.b64encode(screenshot).decode('utf-8')
+                logger.info("FINAL SCREENSHOT: Copy the text below and paste it into your browser URL bar to see what Quora is displaying:")
+                logger.info(f"data:image/jpeg;base64,{b64_img}")
+            except Exception as e:
+                logger.error(f"Could not capture screenshot: {e}")
 
             logger.info("Quora posting automation completed (Note: verify selectors in code).")
             browser_to_close.close()
