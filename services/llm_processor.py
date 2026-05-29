@@ -64,6 +64,23 @@ def process_news(raw_news: str, prompt_filename: str) -> str:
                         model='gemini-2.5-flash',
                         contents=full_prompt,
                     )
+                    
+                    is_complete = False
+                    finish_reason = None
+                    if hasattr(response, 'candidates') and response.candidates:
+                        finish_reason = response.candidates[0].finish_reason
+                        if finish_reason and "STOP" in str(finish_reason).upper():
+                            is_complete = True
+                    
+                    if not is_complete:
+                        if attempt < max_retries - 1:
+                            logger.warning(f"Gemini response cut off or incomplete (finish_reason={finish_reason}). Retrying... (Attempt {attempt + 1}/{max_retries})")
+                            time.sleep(10)
+                            continue
+                        else:
+                            logger.error(f"Gemini response remained incomplete after {max_retries} attempts.")
+                            raise Exception("Gemini response repeatedly cut off or incomplete.")
+
                     return response.text
                 except Exception as e:
                     if "503" in str(e) or "UNAVAILABLE" in str(e):

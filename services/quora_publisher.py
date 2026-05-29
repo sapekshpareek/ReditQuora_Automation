@@ -1,3 +1,4 @@
+import os
 import logging
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
@@ -21,10 +22,12 @@ def post_to_quora(title: str, content: str) -> bool:
             # Using a real browser User Agent is CRITICAL for headless mode on Quora
             user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
             
+            is_headless = os.getenv("HEADLESS", "false").lower() == "true"
+            
             if config.QUORA_COOKIES_JSON:
                 logger.info("QUORA_COOKIES_JSON found. Launching standard browser and injecting cookies.")
                 playwright_browser = p.chromium.launch(
-                    headless=True,
+                    headless=is_headless,
                     args=[
                         "--disable-blink-features=AutomationControlled",
                         "--no-sandbox",
@@ -56,7 +59,7 @@ def post_to_quora(title: str, content: str) -> bool:
                 logger.info(f"Launching Playwright with persistent user data dir: {config.QUORA_USER_DATA_DIR}")
                 context = p.chromium.launch_persistent_context(
                     user_data_dir=config.QUORA_USER_DATA_DIR,
-                    headless=True,
+                    headless=is_headless,
                     user_agent=user_agent,
                     viewport={"width": 1920, "height": 1080},
                     args=[
@@ -78,9 +81,11 @@ def post_to_quora(title: str, content: str) -> bool:
             # Apply stealth to avoid bot detection
             Stealth().apply_stealth_sync(page)
 
-            # Navigate to Quora
-            logger.info("Navigating to Quora...")
-            page.goto("https://www.quora.com/", timeout=60000)
+            # Navigate to Quora Space
+            logger.info("Navigating to Quora Space...")
+            page.goto("https://globalnewsspacehindienglish.quora.com/", timeout=60000)
+            logger.info("Waiting for Space page to load...")
+            page.wait_for_timeout(5000)
             
             # Basic check to see if we are logged in (e.g., look for user profile icon)
             # This selector might change, you may need to inspect Quora's current DOM
@@ -91,25 +96,33 @@ def post_to_quora(title: str, content: str) -> bool:
             # illustrative and likely need to be updated by inspecting Quora's actual post button.
             
             # 1. Click the main box that opens the modal
-            logger.info("Looking for the 'What do you want to ask or share?' box or 'Add question' button...")
+            logger.info("Looking for the 'Say something...' box...")
             try:
-                # First try the red "Add question" button in the top right (often more reliable)
-                add_question_btn = page.locator("button:has-text('Add question')").first
-                if add_question_btn.is_visible():
-                    add_question_btn.click(timeout=5000, force=True)
-                else:
-                    # Fallback: Try clicking the generic input on the feed
-                    open_modal_btn = page.locator("text=What do you want to ask or share?")
-                    open_modal_btn.click(timeout=5000, force=True)
+                clicked = page.evaluate('''() => {
+                    const elements = Array.from(document.querySelectorAll('*'));
+                    const target = elements.find(el => {
+                        const text = el.textContent.trim();
+                        const style = window.getComputedStyle(el);
+                        return text.startsWith('Say something') && style.cursor === 'text';
+                    });
+                    if (target) {
+                        target.click();
+                        return true;
+                    }
+                    return false;
+                }''')
+                
+                if not clicked:
+                    logger.warning("'Say something' not found. Trying generic qu-cursor--text...")
+                    fallback = page.locator(".qu-cursor--text").first
+                    if fallback.is_visible():
+                        fallback.click(timeout=5000, force=True)
+                    else:
+                        raise Exception("No input box found.")
             except Exception as e:
-                logger.warning(f"Initial click failed: {e}. Trying alternate selector...")
-                try:
-                    # Last resort fallback
-                    page.locator("div.q-text.qu-color--gray_light:has-text('What do you want to ask')").first.click(timeout=5000, force=True)
-                except Exception as e2:
-                    logger.error(f"Could not open the modal at all: {e2}")
-                    browser_to_close.close()
-                    return False
+                logger.error(f"Could not open the modal at all: {e}")
+                browser_to_close.close()
+                return False
 
             # 2. Click the "Create Post" tab inside the modal
             logger.info("Switching to 'Create Post' tab...")
@@ -129,7 +142,8 @@ def post_to_quora(title: str, content: str) -> bool:
                 # Quora's rich text editor usually uses contenteditable divs
                 editor = page.locator("div[contenteditable='true']")
                 editor.click(timeout=5000, force=True)
-                page.wait_for_timeout(500)
+                logger.info("Waiting before typing...")
+                page.wait_for_timeout(5000)
                 
                 # Insert text via execCommand which simulates pasting natively. 
                 # This ensures Quora's React state registers the text and enables the Post button!
@@ -137,46 +151,65 @@ def post_to_quora(title: str, content: str) -> bool:
                 
                 # Type a single space to trigger any final keyboard event listeners
                 page.keyboard.type(" ")
-                page.wait_for_timeout(1000)
+                logger.info("Waiting after typing before submitting...")
+                page.wait_for_timeout(5000)
             except Exception as e:
                 logger.error(f"Failed to type into editor: {e}")
             
-            # 4. Click Submit
-            logger.info("Waiting for Post button to become enabled...")
+            # 4. Click Submit / Next
+            logger.info("Waiting for Next or Post button to become enabled...")
             
             try:
                 # This script polls the page for 10 seconds waiting for the button to become enabled.
-                # A button is considered "enabled" when its cursor changes to 'pointer'.
                 page.evaluate('''async () => {
-                    const findButton = () => {
+                    const findButton = (texts) => {
                         const elements = Array.from(document.querySelectorAll('*'));
                         return elements.find(el => {
                             const style = window.getComputedStyle(el);
-                            return el.textContent.trim() === 'Post' && 
+                            return texts.includes(el.textContent.trim()) && 
                                    style.cursor === 'pointer' && 
                                    el.getBoundingClientRect().width > 0;
                         });
                     };
 
                     for (let i = 0; i < 20; i++) { // Try for 10 seconds (20 * 500ms)
-                        const btn = findButton();
+                        const btn = findButton(['Post', 'Next']);
                         if (btn) {
                             btn.click();
                             return "Success";
                         }
                         await new Promise(r => setTimeout(r, 500));
                     }
-                    throw new Error("Post button never became enabled.");
+                    throw new Error("Next/Post button never became enabled.");
                 }''')
-                logger.info("Post button clicked successfully.")
+                logger.info("Next/Post button clicked successfully.")
             except Exception as e:
-                logger.warning(f"Could not automatically click Post. Error: {e}")
-                # Save a screenshot so we can see what went wrong in headless mode
+                logger.warning(f"Could not automatically click Next/Post. Error: {e}")
+                # Save a screenshot so we can see what went wrong
                 page.screenshot(path="quora_error.png")
                 logger.info("Saved quora_error.png for debugging.")
 
-            # Wait a bit for the submission to process
+            # Wait a bit for the submission or next dialog to process
             page.wait_for_timeout(5000)
+            
+            # 5. Handle Monetization dialog if it appears
+            try:
+                monetized_btn = page.locator("text=Monetized").first
+                if monetized_btn.is_visible():
+                    logger.info("Monetization dialog detected. Selecting 'Monetized'...")
+                    monetized_btn.click(timeout=3000, force=True)
+                    page.wait_for_timeout(2000)
+                    
+                    # Click the final Post button in the dialog
+                    logger.info("Clicking final Post button in monetization dialog...")
+                    post_btn = page.locator("button:has-text('Post')").first
+                    if post_btn.is_visible():
+                        post_btn.click(timeout=3000, force=True)
+                    else:
+                        page.locator("text=Post").last.click(timeout=3000, force=True)
+                    page.wait_for_timeout(5000)
+            except Exception as e:
+                logger.info("No monetization dialog found or failed to handle it.")
             
             # --- DEBUGGING: CAPTURE THE SCREEN ---
             # Since it works locally but not on the server, Quora might be showing a CAPTCHA

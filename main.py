@@ -95,6 +95,16 @@ def run_news_pipeline(platform="both", news_type="international"):
 # Removed APScheduler lifespan since Cloud Scheduler will trigger the endpoint
 app = FastAPI(title="News Auto-Poster API")
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.post("/trigger-news-post")
 def trigger_news_post(payload: TriggerPayload):
     """

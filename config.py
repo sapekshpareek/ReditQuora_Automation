@@ -26,6 +26,9 @@ class Config:
     
     # Secure alternative: Inject cookies directly via JSON string
     QUORA_COOKIES_JSON = os.getenv("QUORA_COOKIES_JSON")
+    if not QUORA_COOKIES_JSON and os.path.exists("quora_cookies.txt"):
+        with open("quora_cookies.txt", "r") as f:
+            QUORA_COOKIES_JSON = f.read().strip()
     
     # NewsAPI Setting (if using NewsAPI instead of scraping)
     # Get a key from https://newsapi.org/
