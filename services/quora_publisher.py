@@ -22,7 +22,7 @@ def post_to_quora(title: str, content: str) -> bool:
             # Using a real browser User Agent is CRITICAL for headless mode on Quora
             user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
             
-            is_headless = os.getenv("HEADLESS", "false").lower() == "true"
+            is_headless = os.getenv("HEADLESS", "true").lower() == "true"
             
             if config.QUORA_COOKIES_JSON:
                 logger.info("QUORA_COOKIES_JSON found. Launching standard browser and injecting cookies.")
